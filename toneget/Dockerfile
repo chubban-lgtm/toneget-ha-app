@@ -3,7 +3,8 @@ FROM ghcr.io/home-assistant/base:latest
 RUN apk add --no-cache \
     python3 \
     py3-pip \
-    py3-requests
+    py3-requests \
+    py3-paho-mqtt
 
 WORKDIR /app
 

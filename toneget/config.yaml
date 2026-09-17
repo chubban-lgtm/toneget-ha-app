@@ -1,5 +1,5 @@
 name: "ToneGet"
-version: "0.1.1"
+version: "0.2.0"
 slug: "toneget"
 description: "Sync personal Tonal workout data to Home Assistant"
 url: "https://github.com/chubban-lgtm/toneget-ha-app"
@@ -10,6 +10,9 @@ arch:
 init: false
 startup: application
 boot: auto
+
+services:
+  - mqtt:need
 
 options:
   tonal_email: ""
