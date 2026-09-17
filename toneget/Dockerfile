@@ -1,8 +1,8 @@
 ﻿FROM ghcr.io/home-assistant/base:latest
 
-RUN apk add --no-cache `
-    python3 `
-    py3-pip `
+RUN apk add --no-cache \
+    python3 \
+    py3-pip \
     py3-requests
 
 WORKDIR /app
@@ -16,9 +16,9 @@ RUN chmod a+x /run.sh
 ARG BUILD_VERSION
 ARG BUILD_ARCH
 
-LABEL `
-    io.hass.version="${BUILD_VERSION}" `
-    io.hass.type="app" `
+LABEL \
+    io.hass.version="${BUILD_VERSION}" \
+    io.hass.type="app" \
     io.hass.arch="${BUILD_ARCH}"
 
 CMD ["/run.sh"]
