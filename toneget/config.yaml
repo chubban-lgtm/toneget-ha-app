@@ -1,0 +1,22 @@
+﻿name: "ToneGet"
+version: "0.1.0"
+slug: "toneget"
+description: "Sync personal Tonal workout data to Home Assistant"
+url: "https://github.com/chubban-lgtm/toneget-ha-app"
+
+arch:
+  - amd64
+
+init: false
+startup: application
+boot: auto
+
+options:
+  tonal_email: ""
+  tonal_password: ""
+  sync_interval: 900
+
+schema:
+  tonal_email: str
+  tonal_password: password
+  sync_interval: "int(300,86400)"
