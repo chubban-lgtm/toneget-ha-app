@@ -133,7 +133,7 @@ def device_info():
         "name": DEVICE_NAME,
         "manufacturer": DEVICE_MANUFACTURER,
         "model": DEVICE_MODEL,
-        "sw_version": "0.2.0",
+        "sw_version": "0.2.1",
     }
 
 
