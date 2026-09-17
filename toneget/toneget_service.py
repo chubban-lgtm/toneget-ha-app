@@ -132,7 +132,7 @@ def device_info():
         "name": DEVICE_NAME,
         "manufacturer": DEVICE_MANUFACTURER,
         "model": DEVICE_MODEL,
-        "sw_version": "0.2.2",
+        "sw_version": "0.2.3",
     }
 
 
@@ -405,6 +405,33 @@ def sync_tonal(email, password, mqtt_client):
         id_token,
         user_id,
     )
+
+    # Temporary diagnostics for mapping Tonal data correctly.
+    log(
+        "DEBUG currentStrengthScores: "
+        + json.dumps(current_strength, ensure_ascii=False)
+    )
+
+    for index, workout in enumerate(workouts[:3]):
+        date_fields = {
+            key: value
+            for key, value in workout.items()
+            if any(
+                word in key.lower()
+                for word in (
+                    "date",
+                    "time",
+                    "created",
+                    "updated",
+                    "completed",
+                )
+            )
+        }
+
+        log(
+            f"DEBUG workout[{index}] date fields: "
+            + json.dumps(date_fields, ensure_ascii=False)
+        )
 
     workouts.sort(
         key=lambda x: x.get("beginTime", ""),
