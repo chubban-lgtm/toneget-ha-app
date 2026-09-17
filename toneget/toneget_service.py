@@ -85,7 +85,6 @@ def connect_mqtt():
     service = get_mqtt_service()
 
     client = mqtt.Client(
-        mqtt.CallbackAPIVersion.VERSION2,
         client_id="toneget-ha-app",
     )
 
@@ -133,7 +132,7 @@ def device_info():
         "name": DEVICE_NAME,
         "manufacturer": DEVICE_MANUFACTURER,
         "model": DEVICE_MODEL,
-        "sw_version": "0.2.1",
+        "sw_version": "0.2.2",
     }
 
 
