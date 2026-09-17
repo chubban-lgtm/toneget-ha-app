@@ -1,4 +1,4 @@
-﻿#!/usr/bin/with-contenv bashio
+#!/usr/bin/with-contenv bashio
 
 echo "[ToneGet] Starting Home Assistant app..."
 
