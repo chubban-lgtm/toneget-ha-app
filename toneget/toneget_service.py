@@ -132,7 +132,7 @@ def device_info():
         "name": DEVICE_NAME,
         "manufacturer": DEVICE_MANUFACTURER,
         "model": DEVICE_MODEL,
-        "sw_version": "0.2.3",
+        "sw_version": "0.2.4",
     }
 
 
@@ -252,56 +252,19 @@ def extract_strength_scores(current_strength):
     lower = None
     core = None
 
-    if isinstance(current_strength, dict):
-        overall = (
-            current_strength.get("overall")
-            or current_strength.get("strengthScore")
-            or current_strength.get("score")
-        )
+    if not isinstance(current_strength, dict):
+        return overall, upper, lower, core
 
-        upper = (
-            current_strength.get("upper")
-            or current_strength.get("upperBody")
-            or current_strength.get("upperBodyScore")
-        )
+    parsed = current_strength.get("parsed", {})
+    regions = parsed.get("regions", {})
 
-        lower = (
-            current_strength.get("lower")
-            or current_strength.get("lowerBody")
-            or current_strength.get("lowerBodyScore")
-        )
-
-        core = (
-            current_strength.get("core")
-            or current_strength.get("coreScore")
-        )
-
-        granular = current_strength.get("granular")
-
-        if isinstance(granular, dict):
-            if overall is None:
-                overall = (
-                    granular.get("overall")
-                    or granular.get("strengthScore")
-                )
-
-            if upper is None:
-                upper = (
-                    granular.get("upper")
-                    or granular.get("upperBody")
-                )
-
-            if lower is None:
-                lower = (
-                    granular.get("lower")
-                    or granular.get("lowerBody")
-                )
-
-            if core is None:
-                core = granular.get("core")
+    if isinstance(regions, dict):
+        overall = regions.get("Overall")
+        upper = regions.get("Upper Body")
+        lower = regions.get("Lower Body")
+        core = regions.get("Core")
 
     return overall, upper, lower, core
-
 
 def publish_state(
     client,
@@ -405,33 +368,6 @@ def sync_tonal(email, password, mqtt_client):
         id_token,
         user_id,
     )
-
-    # Temporary diagnostics for mapping Tonal data correctly.
-    log(
-        "DEBUG currentStrengthScores: "
-        + json.dumps(current_strength, ensure_ascii=False)
-    )
-
-    for index, workout in enumerate(workouts[:3]):
-        date_fields = {
-            key: value
-            for key, value in workout.items()
-            if any(
-                word in key.lower()
-                for word in (
-                    "date",
-                    "time",
-                    "created",
-                    "updated",
-                    "completed",
-                )
-            )
-        }
-
-        log(
-            f"DEBUG workout[{index}] date fields: "
-            + json.dumps(date_fields, ensure_ascii=False)
-        )
 
     workouts.sort(
         key=lambda x: x.get("beginTime", ""),
