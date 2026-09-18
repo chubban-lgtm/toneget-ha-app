@@ -10,6 +10,7 @@ WORKDIR /app
 
 COPY sync_workouts.py /app/sync_workouts.py
 COPY toneget_service.py /app/toneget_service.py
+COPY tonal_service.py /app/tonal_service.py
 COPY run.sh /run.sh
 
 RUN chmod a+x /run.sh
