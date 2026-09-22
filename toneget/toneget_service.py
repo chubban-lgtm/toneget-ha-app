@@ -8,6 +8,7 @@ import traceback
 from datetime import datetime, timezone
 
 import paho.mqtt.client as mqtt
+import requests
 import sync_workouts as toneget
 
 
@@ -17,6 +18,7 @@ OUTPUT_FILE = "/data/tonal_latest.json"
 MQTT_DISCOVERY_PREFIX = "homeassistant"
 MQTT_BASE_TOPIC = "toneget"
 MQTT_STATE_TOPIC = f"{MQTT_BASE_TOPIC}/state"
+MQTT_WORKOUT_STATE_TOPIC = f"{MQTT_BASE_TOPIC}/workout_state"
 MQTT_AVAILABILITY_TOPIC = f"{MQTT_BASE_TOPIC}/availability"
 
 DEVICE_ID = "toneget_tonal"
@@ -41,6 +43,9 @@ def load_options():
     email = str(options.get("tonal_email", "")).strip()
     password = str(options.get("tonal_password", ""))
     sync_interval = int(options.get("sync_interval", 900))
+    github_token = str(options.get("github_token", "")).strip()
+    workout_repo = str(options.get("workout_repo", "chubban-lgtm/toneget-workout-data")).strip()
+    workout_branch = str(options.get("workout_branch", "main")).strip() or "main"
 
     if not email:
         log("ERROR: Tonal email is not configured.")
@@ -54,7 +59,7 @@ def load_options():
         log("WARNING: sync_interval below 300 seconds; using 300.")
         sync_interval = 300
 
-    return email, password, sync_interval
+    return email, password, sync_interval, github_token, workout_repo, workout_branch
 
 
 def get_mqtt_service():
@@ -132,7 +137,7 @@ def device_info():
         "name": DEVICE_NAME,
         "manufacturer": DEVICE_MANUFACTURER,
         "model": DEVICE_MODEL,
-        "sw_version": "0.2.4",
+        "sw_version": "0.3.0",
     }
 
 
@@ -244,6 +249,110 @@ def publish_discovery(client):
         publish_discovery_sensor(client, **sensor)
 
     log(f"Published MQTT Discovery for {len(sensors)} sensors.")
+
+
+def publish_workout_discovery(client):
+    sensors = [
+        ("manual_workout_count", "Manual Workout Count", "{{ value_json.manual_workout_count }}", "mdi:counter", None),
+        ("manual_latest_workout", "Manual Latest Workout", "{{ value_json.manual_latest_workout }}", "mdi:weight-lifter", None),
+        ("manual_latest_workout_date", "Manual Latest Workout Date", "{{ value_json.manual_latest_workout_date }}", "mdi:calendar-check", None),
+        ("arm_relaxed", "Arm Relaxed", "{{ value_json.arm_relaxed }}", "mdi:tape-measure", "in"),
+        ("arm_flexed", "Arm Flexed", "{{ value_json.arm_flexed }}", "mdi:arm-flex", "in"),
+        ("arm_measurement_date", "Arm Measurement Date", "{{ value_json.arm_measurement_date }}", "mdi:calendar", None),
+    ]
+    for object_id, name, template, icon, unit in sensors:
+        topic = f"{MQTT_DISCOVERY_PREFIX}/sensor/{DEVICE_ID}/{object_id}/config"
+        payload = {
+            "name": name,
+            "unique_id": f"{DEVICE_ID}_{object_id}",
+            "state_topic": MQTT_WORKOUT_STATE_TOPIC,
+            "availability_topic": MQTT_AVAILABILITY_TOPIC,
+            "payload_available": "online",
+            "payload_not_available": "offline",
+            "value_template": template,
+            "device": device_info(),
+            "icon": icon,
+        }
+        if unit:
+            payload["unit_of_measurement"] = unit
+            payload["state_class"] = "measurement"
+        client.publish(topic, json.dumps(payload), qos=1, retain=True)
+
+
+def github_json(token, repo, branch, path):
+    if not token or not repo:
+        return None
+    url = f"https://api.github.com/repos/{repo}/contents/{path}"
+    headers = {
+        "Accept": "application/vnd.github.raw+json",
+        "Authorization": f"Bearer {token}",
+        "X-GitHub-Api-Version": "2022-11-28",
+        "User-Agent": "ToneGet-HA",
+    }
+    response = requests.get(url, headers=headers, params={"ref": branch}, timeout=20)
+    response.raise_for_status()
+    return response.json()
+
+
+def sync_workout_data(client, token, repo, branch):
+    if not token:
+        log("Private workout sync disabled: GitHub token not configured.")
+        return
+    try:
+        workouts_doc = github_json(token, repo, branch, "workout_data/workouts.json") or {}
+        measurements_doc = github_json(token, repo, branch, "workout_data/measurements.json") or {}
+        baselines_doc = github_json(token, repo, branch, "workout_data/exercise_baselines.json") or {}
+
+        workouts = workouts_doc.get("workouts", [])
+        measurements = measurements_doc.get("measurements", [])
+        baselines = baselines_doc.get("exercises", [])
+
+        latest_workout = workouts[-1] if workouts else {}
+        latest_measurement = measurements[-1] if measurements else {}
+
+        payload = {
+            "manual_workout_count": len(workouts),
+            "manual_latest_workout": latest_workout.get("workout"),
+            "manual_latest_workout_date": latest_workout.get("date"),
+            "arm_relaxed": latest_measurement.get("arm_relaxed_in"),
+            "arm_flexed": latest_measurement.get("arm_flexed_in"),
+            "arm_measurement_date": latest_measurement.get("date"),
+            "baseline_count": len(baselines),
+            "last_workout_data_sync": datetime.now(timezone.utc).isoformat(),
+        }
+        client.publish(MQTT_WORKOUT_STATE_TOPIC, json.dumps(payload), qos=1, retain=True)
+
+        for item in baselines:
+            name = str(item.get("name", "")).strip()
+            if not name:
+                continue
+            object_id = "baseline_" + "".join(ch.lower() if ch.isalnum() else "_" for ch in name).strip("_")
+            while "__" in object_id:
+                object_id = object_id.replace("__", "_")
+            value = item.get("weight_each_lb")
+            unit = "lb/arm"
+            if value is None:
+                value = item.get("weight_total_lb")
+                unit = "lb"
+            if value is None:
+                value = item.get("weight_each_lb_range")
+                unit = "lb/arm"
+            topic = f"{MQTT_DISCOVERY_PREFIX}/sensor/{DEVICE_ID}/{object_id}/config"
+            config = {
+                "name": f"{name} Baseline",
+                "unique_id": f"{DEVICE_ID}_{object_id}",
+                "state_topic": f"{MQTT_BASE_TOPIC}/baseline/{object_id}",
+                "availability_topic": MQTT_AVAILABILITY_TOPIC,
+                "device": device_info(),
+                "icon": "mdi:dumbbell",
+                "unit_of_measurement": unit,
+            }
+            client.publish(topic, json.dumps(config), qos=1, retain=True)
+            client.publish(f"{MQTT_BASE_TOPIC}/baseline/{object_id}", str(value), qos=1, retain=True)
+
+        log(f"Private workout data synchronized: {len(workouts)} workouts, {len(baselines)} baselines.")
+    except Exception as exc:
+        log(f"WORKOUT DATA SYNC FAILED: {exc}")
 
 
 def extract_strength_scores(current_strength):
@@ -447,7 +556,7 @@ def main():
     log(f"ToneGet version: {toneget.__version__}")
     log("==========================================")
 
-    email, password, sync_interval = load_options()
+    email, password, sync_interval, github_token, workout_repo, workout_branch = load_options()
 
     log(
         f"Automatic synchronization: "
@@ -459,6 +568,7 @@ def main():
     mqtt_client = connect_mqtt()
 
     publish_discovery(mqtt_client)
+    publish_workout_discovery(mqtt_client)
 
     try:
         while True:
@@ -467,6 +577,12 @@ def main():
                     email,
                     password,
                     mqtt_client,
+                )
+                sync_workout_data(
+                    mqtt_client,
+                    github_token,
+                    workout_repo,
+                    workout_branch,
                 )
 
             except KeyboardInterrupt:
